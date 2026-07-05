@@ -1,6 +1,6 @@
 ---
 name: GBA Studio v1.0 Fork
-overview: Complete the creator's v1.0 roadmap (excluding signed installer), then expand toward GB Studio feature parity. All generated C++ must be clean, commented, and optimized. Work is organized in dependency-aware phases from quick UX wins through engine extensions, asset editors, toolchain bundling, and extensibility.
+overview: Complete the creator's v1.0 roadmap (excluding signed installer), expand toward GB Studio feature parity, and add editor UX, asset tooling, extended gameplay events, power-user workflows, distribution, quality tooling, and medium-scope link cable multiplayer. All generated C++ must be clean, commented, and optimized.
 todos:
   - id: phase1-target-point
     content: Implement click-to-place go-to-scene target marker on destination scene canvas (EventGoToScene + Scene.tsx eventEmitter pattern)
@@ -34,6 +34,27 @@ todos:
     status: pending
   - id: cross-codegen-quality
     content: "Codegen quality pass: clean formatting, scene/event comments, constexpr & hot-path optimizations across tpl.h templates and runtime C++"
+    status: pending
+  - id: phase10-editor-ux
+    content: "Editor UX: project search, build error navigation, duplicate/clone, scene organization, canvas minimap, custom shortcuts, auto-save"
+    status: pending
+  - id: phase11-asset-pipeline
+    content: "Asset pipeline: palette editor, build validation, ROM/memory report, game icon editor, tilemap layer"
+    status: pending
+  - id: phase12-gameplay-events
+    content: "Gameplay & events: custom events, actor update/movement, player conditions, dialog polish, input remapping, screen effects"
+    status: pending
+  - id: phase13-power-user
+    content: "Power user: in-app custom C++ editor tab, debug vs release build profiles"
+    status: pending
+  - id: phase14-distribution
+    content: "Distribution: sample gallery, in-app event docs, what's new screen, export project as zip"
+    status: pending
+  - id: phase15-quality
+    content: "Quality: project validator, golden ROM regression CI, optional NEO_DEBUG runtime logging"
+    status: pending
+  - id: phase16-link-cable
+    content: "Link cable multiplayer (medium scope): 2-player sync, variable/event exchange via GBA link port"
     status: pending
 isProject: false
 ---
@@ -313,7 +334,237 @@ Features GB Studio has that GBA Studio lacks, ordered by impact:
 | **Asset manager view** | Medium | Unified backgrounds/sprites browser with import — overlaps Phase 5/6 |
 | **Engine fields** (project constants) | Low | Similar to variables but compile-time |
 
-Tackle **variable math** and **camera shake** early (low effort, high parity value). **Point-and-click** and **save/load** are large and should follow side-scroller + parallax.
+Tackle **variable math** and **camera shake** early (low effort, high parity value). **Point-and-click** and **save/load** are large and should follow side-scroller + parallax. Extended gameplay items are detailed in Phase 12.
+
+---
+
+## Phase 10 — Editor UX & Productivity (2–3 weeks)
+
+Quality-of-life improvements across the editor shell and canvas.
+
+### 10.1 Project-wide search
+
+- Global search panel (Cmd/Ctrl+Shift+F): find scenes, scripts, variables, events, and dialog text by name or content.
+- Results grouped by type; click to navigate to scene canvas or open right-sidebar form.
+- Index project JSON on load and incrementally update on save / file watcher events.
+
+### 10.2 Build error → source navigation
+
+- Parse compiler output in [`BuildLogsTab.tsx`](src/renderer/windows/editor/BuildLogsTab.tsx) for generated symbol names and line refs.
+- Map symbols back to editor entities via codegen metadata comments (see cross-cutting codegen section).
+- Clickable log lines jump to the originating scene, actor, sensor, or event in the canvas/sidebar.
+
+### 10.3 Duplicate scene / clone entity
+
+- Context menu: **Duplicate Scene** on canvas cards ([`LeftSidebar.tsx`](src/renderer/views/canvas/LeftSidebar.tsx) / scene context menu) — copies scene JSON, entities, and offsets canvas position.
+- **Clone** for actors, sensors, and sprites with offset placement on the same scene.
+- Generate new UUIDs via existing [`sanitize.ts`](src/main/sanitize.ts) patterns.
+
+### 10.4 Scene organization
+
+- Optional scene **folders** or **tags** in the left sidebar; filter canvas by tag.
+- **Color labels** on scene cards for at-a-glance grouping (town, dungeon, cutscene, etc.).
+- Persist organization data in `project.scenes[]` or a new `project.sceneGroups` field.
+
+### 10.5 Canvas minimap / zoom-to-fit
+
+- Minimap overlay for the infinite canvas ([`canvas/index.tsx`](src/renderer/views/canvas/index.tsx)) showing all scene cards and viewport rectangle.
+- **Zoom to fit** command: frame all scenes in view.
+- **Zoom to selection**: focus active scene.
+
+### 10.6 Custom keyboard shortcuts
+
+- Settings panel to remap editor shortcuts (build, save, tools, view switch).
+- Store bindings in app storage ([`storage.ts`](src/main/storage.ts)); replace hardcoded [`useHotkeys`](src/renderer/windows/editor/LeftSidebar.tsx) calls with a shared shortcut registry.
+
+### 10.7 Auto-save + recovery
+
+- Configurable auto-save interval (e.g. every 60s when dirty).
+- Write to a `.gbasproj.autosave` sibling file; offer recovery prompt on crash or unclean exit.
+- Optional: auto-save before build.
+
+---
+
+## Phase 11 — Asset Pipeline & GBA Tooling (3–4 weeks)
+
+Complements Phase 1.2 (image auto-convert) and Phases 5–6 (sprite/audio editors).
+
+### 11.1 Palette editor
+
+- Visual 16- and 256-color palette editor for sprites and backgrounds.
+- Enforce GBA constraints (max colors per asset, transparent index).
+- Integrate with auto-convert (Phase 1.2) and sprite/background preview on canvas.
+- Write palette data into asset `.json` metadata for Butano/grit.
+
+### 11.2 Asset validation on build
+
+- Pre-build validation pass before `make`:
+  - Missing `.bmp`/`.json` pairs, wrong dimensions, non-power-of-two where required.
+  - Palette overflow, oversized assets (warn thresholds).
+  - Invalid audio formats or missing referenced music/SFX files.
+- Surface warnings vs errors in build log; block build on errors, allow override on warnings.
+
+### 11.3 ROM size / memory report
+
+- Post-build summary in build log or a dedicated panel:
+  - Final ROM size, largest graphics/audio contributors.
+  - Estimated WRAM/VRAM pressure (approximate from Butano asset metadata).
+- Helps users stay within GBA cart limits.
+
+### 11.4 Game icon editor
+
+- UI to set the GBA cartridge icon (32×32, 4bpp) alongside existing `romName` / `romCode` in [`settings/index.tsx`](src/renderer/views/settings/index.tsx).
+- Export icon into build pipeline; pass to `gbafix` / ROM header step via [`Makefile.tpl`](public/templates/commons/templates/Makefile.tpl).
+
+### 11.5 Tilemap layer
+
+- Optional tile-based background layer (tileset + map grid) in addition to full-image backgrounds.
+- Tile paint mode in scene editor; export as Butano-compatible regular BG or custom map data.
+- Collision grid can align to tilemap cells.
+
+---
+
+## Phase 12 — Gameplay & Events (Extended) (4–6 weeks)
+
+Builds on Phase 9 parity items with a full event-system expansion.
+
+### 12.1 Custom events
+
+- Reusable named event scripts (like GB Studio custom events): define once, invoke from any scene via **Call Custom Event**.
+- Stored as project-level or scene-level JSON; appear in event palette.
+- Codegen inlines or calls shared generated functions in `neo_scenes.h`.
+
+### 12.2 Actor On Update & movement events
+
+- **On Update** event list per actor (fires each frame or on tick interval).
+- **Move actor to**, **face direction**, **set animation** events.
+- C++ updates in [`actor.cpp`](public/templates/commons/src/actor.cpp); editor in [`ActorForm.tsx`](src/renderer/views/canvas/ActorForm.tsx).
+
+### 12.3 Compare-to-player conditions
+
+- Extend **If** conditions ([`EventIf.tsx`](src/renderer/components/EventsField/EventIf.tsx)):
+  - Player near actor (radius).
+  - Player facing direction.
+  - Player has variable value / flag.
+- Codegen in [`if-conditions.tpl.h`](public/templates/commons/templates/partials/if-conditions.tpl.h).
+
+### 12.4 Text / dialog polish
+
+- Dialog **portraits** (avatar sprite per line or speaker).
+- **Text speed**, **auto-advance**, and per-scene dialog box **themes**.
+- Extend [`EventShowDialog.tsx`](src/renderer/components/EventsField/EventShowDialog.tsx) and [`DialogMenuPreview`](src/renderer/components/DialogMenuPreview/index.tsx).
+
+### 12.5 In-game input remapping
+
+- Optional title-screen or settings-scene flow letting players rebind GBA buttons.
+- Persist bindings to SRAM/Flash (pairs with save/load from Phase 9).
+- Runtime input layer in [`player.cpp`](public/templates/commons/src/player.cpp) reads remapped table.
+
+### 12.6 Screen effects
+
+- Beyond existing fade-in/out:
+  - **Camera shake** (also in Phase 9).
+  - **Flash** (palette/white flash).
+  - **Palette fade** / color grade overlays.
+- Butano blend/window APIs where applicable; new events in [`events.tsx`](src/renderer/services/events.tsx).
+
+### 12.7 Phase 9 carry-over (still in scope)
+
+- Variable math, point-and-click scene type, save/load, actor emotes, scene transition effects, engine fields — as listed in Phase 9 table.
+
+---
+
+## Phase 13 — Power User (2–3 weeks)
+
+Advanced workflows for developers extending beyond the visual editor.
+
+### 13.1 Custom C++ editor tab
+
+- New editor view or sidebar panel for `project/src/` and `project/include/` files.
+- Syntax highlighting (Monaco or CodeMirror); save writes directly to disk.
+- Files already merged into build via [`Makefile.tpl`](public/templates/commons/templates/Makefile.tpl) — no pipeline change needed beyond discoverability.
+
+### 13.2 Debug vs release build profiles
+
+- **Debug** profile: `-g`, `NEO_DEBUG` defines, verbose logging, asserts in generated runtime.
+- **Release** profile: optimized (`-O2`/`-Os`), no debug strings, smaller ROM.
+- Extend existing build configurations ([`ProjectConfiguration`](src/types.ts)) in Settings; pass flags through generated Makefile.
+
+**Explicitly excluded:** live preview on save (auto-rebuild on every save) — too slow and disruptive for default workflow.
+
+---
+
+## Phase 14 — Distribution & Community (2–3 weeks)
+
+Complements Phase 7 (auto updater).
+
+### 14.1 Sample project gallery
+
+- Ship additional templates beyond `2d-sample` and `blank`: platformer demo, dialog demo, parallax demo, link-cable demo.
+- **New Project** screen ([`NewProjectForm.tsx`](src/renderer/windows/project-selection/NewProjectForm.tsx)) shows gallery with screenshots and descriptions.
+
+### 14.2 In-app docs / event reference
+
+- Help view or panel: documents every event type, scene type, and build requirement.
+- Context-sensitive help button on each `Event*.tsx` form linking to the relevant doc section.
+
+### 14.3 "What's new" on update
+
+- Changelog screen shown after auto-update (Phase 7) or first launch of a new version.
+- Parse `CHANGELOG.md` or release notes from GitHub Releases API.
+
+### 14.4 Export project as zip
+
+- Menu action: bundle project folder (excluding `tmp/`, `out/`) into a shareable `.zip`.
+- Optional: import from zip to open on another machine.
+
+---
+
+## Phase 15 — Quality & Maintainability (2–3 weeks)
+
+Complements cross-cutting codegen quality standards.
+
+### 15.1 Project validator
+
+- **Validate Project** command (pre-build or standalone):
+  - Broken `go-to-scene` targets, dangling variable references.
+  - Unreachable scenes from `startingScene`.
+  - Actors/sensors referencing missing sprites.
+- Report in a dedicated validation panel with fix suggestions.
+
+### 15.2 Golden ROM regression tests
+
+- CI builds fixture projects (`2d-sample`, new templates from Phase 14).
+- Compare ROM size hash or checksum against committed golden values; fail on unexpected drift.
+- Catches accidental codegen/runtime regressions.
+
+### 15.3 Structured logging in generated runtime
+
+- Optional `#ifdef NEO_DEBUG` logging in [`game.cpp`](public/templates/commons/src/game.cpp): event dispatch trace, scene transitions, variable changes.
+- Visible in mGBA debug console or emulator log when debug profile is active (Phase 13.2).
+
+---
+
+## Phase 16 — Link Cable Multiplayer (Medium Scope) (3–4 weeks)
+
+GBA-specific feature; scoped to practical 2-player use cases, not full MMO-style networking.
+
+### Scope (medium)
+
+- **2-player link** over GBA link port (Butano link API).
+- Sync primitives: shared variables, player position broadcast, simple event triggers when linked.
+- Editor: **Link** event category — send/receive variable, wait for partner, start link session.
+- Sample project demonstrating co-op or versus mini-game.
+
+### Out of scope for medium tier
+
+- 4-player support, complex rollback netcode, internet play, Pokémon-style battle systems.
+
+### Implementation
+
+- Runtime module `link.cpp` wrapping Butano multiplayer/link APIs.
+- Codegen for link events in [`events.tpl.h`](public/templates/commons/templates/partials/events.tpl.h).
+- Preview: document that link features require hardware or dual-instance testing (mGBA link support limited).
 
 ---
 
@@ -341,24 +592,41 @@ gantt
     Plugins         :p8, after p5, 28d
   section Parity
     GBSGaps         :p9, after p4, 60d
+  section EditorUX
+    EditorProductivity :p10, after p1a, 21d
+  section Assets
+    AssetPipeline   :p11, after p1b, 28d
+  section Events
+    GameplayEvents  :p12, after p3, 42d
+  section PowerUser
+    CustomCppDebug  :p13, after p2, 21d
+  section Community
+    DistCommunity   :p14, after p7, 21d
+  section Quality
+    ValidatorCI     :p15, after p2, 21d
+  section Hardware
+    LinkCable       :p16, after p12, 28d
 ```
 
 **Suggested first sprint:** Phase 1 (target point + image convert) — immediate user value, no engine risk.
 
 **Parallel tracks after Phase 1:**
-- Track A: Phase 2 (toolchain) + Phase 7 (updater) — distribution
-- Track B: Phase 3 → 4 (engine) — gameplay
-- Track C: Phase 5 → 6 (editors) — content creation
-- Track D: Codegen quality (ongoing) — apply clean/comment/optimize standards to every template and runtime change
+- Track A: Phase 2 (toolchain) + Phase 7 (updater) + Phase 14 (distribution) — shipping
+- Track B: Phase 3 → 4 (engine) + Phase 12 (gameplay/events) — gameplay
+- Track C: Phase 5 → 6 (editors) + Phase 11 (asset pipeline) — content creation
+- Track D: Codegen quality + Phase 15 (validator/CI) — quality (ongoing)
+- Track E: Phase 10 (editor UX) — productivity (can start early, parallel to Phase 1)
+- Track F: Phase 13 (power user) — after toolchain stable
+- Track G: Phase 16 (link cable) — after core event system extended (Phase 12)
 
 ---
 
 ## Testing Strategy
 
-- **Unit:** Image conversion, template codegen snapshots (golden-file diff for clean/commented output), plugin manifest parsing.
+- **Unit:** Image conversion, template codegen snapshots (golden-file diff for clean/commented output), plugin manifest parsing, project validator rules.
 - **Integration:** Build sample project end-to-end with bundled toolchain on win/mac/linux CI.
-- **Manual:** Each new scene type gets a sample project in [`public/templates/`](public/templates/).
-- **Regression:** Existing `2d-sample` template must build and run in mGBA preview unchanged.
+- **Manual:** Each new scene type gets a sample project in [`public/templates/`](public/templates/); link cable sample requires hardware or dual-emulator setup.
+- **Regression:** Golden ROM checksum tests (Phase 15.2); existing `2d-sample` template must build and run in mGBA preview unchanged.
 
 ---
 
@@ -366,4 +634,6 @@ gantt
 
 - Windows **signed** installer (explicitly skipped).
 - Full music tracker / DAW — sound editor MVP only.
-- 100% GB Studio feature parity in v1 — Phase 9 is ongoing.
+- **Live preview on save** — auto-rebuild on every save (Phase 13 explicitly excluded).
+- 100% GB Studio feature parity in v1 — Phases 9 and 12 are ongoing.
+- Full link cable feature set (4-player, internet play, complex netcode) — Phase 16 is medium scope only.
